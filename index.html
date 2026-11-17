@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Дорожка</title>
+<style>
+  :root { --bg:#111; --fg:#f2f2f2; --btn:#2a2a2a; --ok:#1f8f4e; --stop:#d62828; }
+  @media (prefers-color-scheme: light) { :root { --bg:#fff; --fg:#111; --btn:#e6e6e6; } }
+  body { margin:0; padding:16px; background:var(--bg); color:var(--fg); font:18px system-ui, sans-serif; text-align:center; }
+  button { font:inherit; border:0; border-radius:16px; background:var(--btn); color:var(--fg); padding:22px 0; width:100%; }
+  .row { display:flex; gap:12px; margin:12px 0; }
+  #speed { font-size:72px; margin:16px 0 4px; }
+  #go { background:var(--ok); color:#fff; }
+  #stop { background:var(--stop); color:#fff; font-size:28px; padding:34px 0; }
+  #log { text-align:left; font:13px ui-monospace, monospace; opacity:.75; white-space:pre-wrap; max-height:160px; overflow:auto; }
+</style>
+</head>
+<body>
+<button id="conn">Подключиться к дорожке</button>
+<div id="speed">0.0</div><div>км/ч</div>
+<div class="row"><button id="minus">− 0.5</button><button id="plus">+ 0.5</button></div>
+<div class="row"><button id="go">Старт</button></div>
+<div class="row"><button id="stop">СТОП</button></div>
+<div id="log"></div>
+<script>
+const MIN = 3.0, MAX = 6.0, STEP = 0.5; // shortcut: ограничение скорости, меняй MAX осознанно
+const FTMS = 0x1826, CP = 0x2ad9;
+let cp = null, speed = 4.0, logEl = document.getElementById('log'), shown = document.getElementById('speed');
+const log = t => { logEl.textContent = t + '\n' + logEl.textContent; };
+const show = () => { shown.textContent = speed.toFixed(1); };
+
+async function send(bytes) {
+  if (!cp) return log('нет подключения');
+  await cp.writeValueWithoutResponse(new Uint8Array(bytes));
+}
+const setSpeed = async v => {
+  speed = Math.min(MAX, Math.max(MIN, Math.round(v * 2) / 2));
+  show();
+  await send([0x02, ...new Uint8Array(new Uint16Array([Math.round(speed * 100)]).buffer)]);
+};
+
+async function connect() {
+  const dev = await navigator.bluetooth.requestDevice({
+    filters: [{ name: 'WELLFIT TM Linker' }], optionalServices: [FTMS]
+  });
+  const srv = await dev.gatt.connect();
+  cp = await (await srv.getPrimaryService(FTMS)).getCharacteristic(CP);
+  await cp.startNotifications();
+  cp.addEventListener('characteristicvaluechanged', e => log('ответ ' + [...new Uint8Array(e.target.value.buffer)].map(b => b.toString(16)).join(' ')));
+  dev.addEventListener('gattserverdisconnected', () => { cp = null; log('связь потеряна'); });
+  await send([0x00]);
+  log('подключено');
+}
+
+document.getElementById('conn').onclick = () => connect().catch(e => log('ошибка: ' + e.message));
+document.getElementById('go').onclick = async () => { await send([0x07]); await setSpeed(speed); };
+document.getElementById('stop').onclick = () => send([0x08, 0x01]);
+document.getElementById('plus').onclick = () => setSpeed(speed + STEP);
+document.getElementById('minus').onclick = () => setSpeed(speed - STEP);
+
+// Кнопки внешнего пульта: показываем, какие клавиши он шлёт
+addEventListener('keydown', e => {
+  log('клавиша: ' + e.key + ' / ' + e.code);
+  if (e.key === '+' || e.key === '=' || e.key === 'ArrowUp') setSpeed(speed + STEP);
+  if (e.key === '-' || e.key === 'ArrowDown') setSpeed(speed - STEP);
+});
+show();
+</script>
+</body>
+</html>
