@@ -32,7 +32,8 @@ const show = () => { shown.textContent = speed.toFixed(1); };
 
 async function send(bytes) {
   if (!cp) return log('нет подключения');
-  await cp.writeValueWithoutResponse(new Uint8Array(bytes));
+  try { await cp.writeValueWithoutResponse(new Uint8Array(bytes)); }
+  catch (e) { log('не отправилось: ' + e.message); }
 }
 const setSpeed = async v => {
   speed = Math.min(MAX, Math.max(MIN, Math.round(v * 2) / 2));
@@ -54,7 +55,11 @@ async function connect() {
 }
 
 document.getElementById('conn').onclick = () => connect().catch(e => log('ошибка: ' + e.message));
-document.getElementById('go').onclick = async () => { await send([0x07]); await setSpeed(speed); };
+// дорожка после старта идёт обратный отсчёт; скорость, присланная сразу, теряется (проверено с Мака: пауза 3 с)
+document.getElementById('go').onclick = async () => {
+  await send([0x00]); await send([0x07]); log('старт, жду отсчёт...');
+  setTimeout(() => setSpeed(speed), 3500);
+};
 document.getElementById('stop').onclick = () => send([0x08, 0x01]);
 document.getElementById('plus').onclick = () => setSpeed(speed + STEP);
 document.getElementById('minus').onclick = () => setSpeed(speed - STEP);
