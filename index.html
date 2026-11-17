@@ -55,7 +55,7 @@ async function connect() {
 }
 
 document.getElementById('conn').onclick = () => connect().catch(e => log('ошибка: ' + e.message));
-// дорожка после старта идёт обратный отсчёт; скорость, присланная сразу, теряется (проверено с Мака: пауза 3 с)
+// гипотеза: после старта дорожка ждёт ~3 с; с Мака так работало, мгновенную скорость не проверяли
 document.getElementById('go').onclick = async () => {
   await send([0x00]); await send([0x07]); log('старт, жду отсчёт...');
   setTimeout(() => setSpeed(speed), 3500);
